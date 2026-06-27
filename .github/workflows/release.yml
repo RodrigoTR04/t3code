@@ -1,6 +1,9 @@
 name: Linux Nightly AppImages
 
 on:
+  push:
+    tags:
+      - "linux-nightly-build-*"
   workflow_dispatch:
 
 permissions:

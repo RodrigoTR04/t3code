@@ -151,11 +151,17 @@ jobs:
           shopt -s nullglob
           for pattern in \
             "release/*.AppImage" \
-            "release/*.AppImage.blockmap" \
-            "release/*.yml"; do
+            "release/*.AppImage.blockmap"; do
             for file in $pattern; do
               cp "$file" release-publish/
             done
+          done
+
+          for file in release/*.yml; do
+            if [[ "$(basename "$file")" == builder-debug.yml ]]; then
+              continue
+            fi
+            cp "$file" release-publish/
           done
 
           for manifest in release-publish/*.yml; do
@@ -228,6 +234,8 @@ jobs:
             echo "No Linux updater manifests found to merge." >&2
             exit 1
           fi
+
+          rm -f release-assets/builder-debug-linux-*.yml
 
       - name: Publish prerelease
         if: needs.preflight.outputs.previous_tag != ''

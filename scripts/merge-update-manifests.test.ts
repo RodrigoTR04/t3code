@@ -123,6 +123,60 @@ releaseDate: '2026-03-07T10:36:07.540Z'
     assert.equal((serialized.match(/- url:/g) ?? []).length, 4);
   });
 
+  it("merges arm64 and x64 Linux update manifests into one multi-arch manifest", () => {
+    const arm64 = parsePlatformUpdateManifest(
+      "linux",
+      `version: 0.0.4
+files:
+  - url: T3-Code-0.0.4-arm64.AppImage
+    sha512: arm64appimage
+    size: 125621344
+  - url: T3-Code-0.0.4-arm64.AppImage.blockmap
+    sha512: arm64blockmap
+    size: 131754
+path: T3-Code-0.0.4-arm64.AppImage
+sha512: arm64appimage
+releaseDate: '2026-03-07T10:32:14.587Z'
+`,
+      "latest-linux-arm64.yml",
+    );
+
+    const x64 = parsePlatformUpdateManifest(
+      "linux",
+      `version: 0.0.4
+files:
+  - url: T3-Code-0.0.4-x64.AppImage
+    sha512: x64appimage
+    size: 132000112
+  - url: T3-Code-0.0.4-x64.AppImage.blockmap
+    sha512: x64blockmap
+    size: 138148
+path: T3-Code-0.0.4-x64.AppImage
+sha512: x64appimage
+releaseDate: '2026-03-07T10:36:07.540Z'
+`,
+      "latest-linux-x64.yml",
+    );
+
+    const merged = mergePlatformUpdateManifests("linux", arm64, x64);
+
+    assert.equal(merged.version, "0.0.4");
+    assert.equal(merged.releaseDate, "2026-03-07T10:36:07.540Z");
+    assert.deepStrictEqual(
+      merged.files.map((file) => file.url),
+      [
+        "T3-Code-0.0.4-arm64.AppImage",
+        "T3-Code-0.0.4-arm64.AppImage.blockmap",
+        "T3-Code-0.0.4-x64.AppImage",
+        "T3-Code-0.0.4-x64.AppImage.blockmap",
+      ],
+    );
+
+    const serialized = serializePlatformUpdateManifest("linux", merged);
+    assert.ok(!serialized.includes("path:"));
+    assert.equal((serialized.match(/- url:/g) ?? []).length, 4);
+  });
+
   it("rejects mismatched manifest versions", () => {
     const primary = parsePlatformUpdateManifest(
       "win",
@@ -286,9 +340,49 @@ releaseDate: '2026-03-07T10:36:07.540Z'
     }),
   );
 
+  it.effect("writes merged Linux manifests to an explicit output path", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "merge-update-manifests-cli-linux-",
+      });
+      const primaryPath = path.join(baseDir, "latest-linux-arm64.yml");
+      const secondaryPath = path.join(baseDir, "latest-linux-x64.yml");
+      const outputPath = path.join(baseDir, "latest-linux.yml");
+
+      yield* fs.writeFileString(
+        primaryPath,
+        `version: 0.0.4
+files:
+  - url: T3-Code-0.0.4-arm64.AppImage
+    sha512: arm64appimage
+    size: 125621344
+releaseDate: '2026-03-07T10:32:14.587Z'
+`,
+      );
+      yield* fs.writeFileString(
+        secondaryPath,
+        `version: 0.0.4
+files:
+  - url: T3-Code-0.0.4-x64.AppImage
+    sha512: x64appimage
+    size: 132000112
+releaseDate: '2026-03-07T10:36:07.540Z'
+`,
+      );
+
+      yield* runCli(["--platform", "linux", primaryPath, secondaryPath, outputPath]);
+
+      const merged = yield* fs.readFileString(outputPath);
+      assert.ok(merged.includes("T3-Code-0.0.4-arm64.AppImage"));
+      assert.ok(merged.includes("T3-Code-0.0.4-x64.AppImage"));
+    }),
+  );
+
   it.effect("rejects invalid platform values during cli parsing", () =>
     Effect.gen(function* () {
-      const error = yield* runCli(["--platform", "linux", "a.yml", "b.yml"]).pipe(Effect.flip);
+      const error = yield* runCli(["--platform", "freebsd", "a.yml", "b.yml"]).pipe(Effect.flip);
 
       if (!CliError.isCliError(error)) {
         assert.fail(`Expected CliError, got ${String(error)}`);
@@ -302,7 +396,7 @@ releaseDate: '2026-03-07T10:36:07.540Z'
       }
 
       assert.equal(platformError.option, "platform");
-      assert.equal(platformError.value, "linux");
+      assert.equal(platformError.value, "freebsd");
     }),
   );
 });

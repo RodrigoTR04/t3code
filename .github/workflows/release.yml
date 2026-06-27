@@ -151,17 +151,14 @@ jobs:
           shopt -s nullglob
           for pattern in \
             "release/*.AppImage" \
-            "release/*.AppImage.blockmap"; do
+            "release/*.AppImage.blockmap" \
+            "release/*.yml"; do
             for file in $pattern; do
+              if [[ "$(basename "$file")" == builder-debug.yml ]]; then
+                continue
+              fi
               cp "$file" release-publish/
             done
-          done
-
-          for file in release/*.yml; do
-            if [[ "$(basename "$file")" == builder-debug.yml ]]; then
-              continue
-            fi
-            cp "$file" release-publish/
           done
 
           arch="${{ matrix.arch }}"

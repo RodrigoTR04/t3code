@@ -177,6 +177,46 @@ releaseDate: '2026-03-07T10:36:07.540Z'
     assert.equal((serialized.match(/- url:/g) ?? []).length, 4);
   });
 
+  it("merges Linux AppImage manifests that include blockMapSize", () => {
+    const arm64 = parsePlatformUpdateManifest(
+      "linux",
+      `version: 0.0.4
+files:
+  - url: T3-Code-0.0.4-arm64.AppImage
+    sha512: arm64appimage
+    size: 125621344
+    blockMapSize: 131754
+path: T3-Code-0.0.4-arm64.AppImage
+sha512: arm64appimage
+releaseDate: '2026-03-07T10:32:14.587Z'
+`,
+      "nightly-linux-arm64.yml",
+    );
+
+    const x64 = parsePlatformUpdateManifest(
+      "linux",
+      `version: 0.0.4
+files:
+  - url: T3-Code-0.0.4-x86_64.AppImage
+    sha512: x64appimage
+    size: 132000112
+    blockMapSize: 138148
+path: T3-Code-0.0.4-x86_64.AppImage
+sha512: x64appimage
+releaseDate: '2026-03-07T10:36:07.540Z'
+`,
+      "nightly-linux-x64.yml",
+    );
+
+    const merged = mergePlatformUpdateManifests("linux", arm64, x64);
+    const serialized = serializePlatformUpdateManifest("linux", merged);
+
+    assert.equal(arm64.files[0]?.blockMapSize, 131754);
+    assert.equal(x64.files[0]?.blockMapSize, 138148);
+    assert.ok(serialized.includes("blockMapSize: 131754"));
+    assert.ok(serialized.includes("blockMapSize: 138148"));
+  });
+
   it("rejects mismatched manifest versions", () => {
     const primary = parsePlatformUpdateManifest(
       "win",

@@ -50,9 +50,7 @@ function parseFileRecord(
     url: currentFile.url,
     sha512: currentFile.sha512,
     size: currentFile.size,
-    ...(currentFile.blockMapSize === undefined
-      ? {}
-      : { blockMapSize: currentFile.blockMapSize }),
+    ...(currentFile.blockMapSize === undefined ? {} : { blockMapSize: currentFile.blockMapSize }),
   };
 }
 

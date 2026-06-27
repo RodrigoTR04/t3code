@@ -205,6 +205,10 @@ jobs:
 
           found_linux_manifest=false
           for x64_manifest in release-assets/*-linux-x64.yml; do
+            if [[ "$(basename "$x64_manifest")" == builder-debug-* ]]; then
+              continue
+            fi
+
             arm64_manifest="${x64_manifest/-linux-x64.yml/-linux-arm64.yml}"
             output_manifest="${x64_manifest/-linux-x64.yml/.yml}"
             if [[ ! -f "$arm64_manifest" ]]; then

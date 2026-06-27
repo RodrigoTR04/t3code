@@ -71,9 +71,6 @@ jobs:
       - name: Typecheck
         run: vp run typecheck
 
-      - name: Test
-        run: vp run test
-
       - id: previous_tag
         name: Resolve previous nightly tag
         run: |

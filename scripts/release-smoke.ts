@@ -158,51 +158,6 @@ nsis:
   return { arm64Path, x64Path };
 }
 
-function writeLinuxManifestFixtures(
-  targetRoot: string,
-  channel: string,
-): { arm64Path: string; x64Path: string } {
-  const assetDirectory = NodePath.resolve(targetRoot, "release-assets");
-  NodeFS.mkdirSync(assetDirectory, { recursive: true });
-
-  const arm64Path = NodePath.resolve(assetDirectory, `${channel}-linux-arm64.yml`);
-  const x64Path = NodePath.resolve(assetDirectory, `${channel}-linux-x64.yml`);
-
-  NodeFS.writeFileSync(
-    arm64Path,
-    `version: 9.9.9-smoke.0
-files:
-  - url: T3-Code-9.9.9-smoke.0-arm64.AppImage
-    sha512: arm64appimage
-    size: 125621344
-  - url: T3-Code-9.9.9-smoke.0-arm64.AppImage.blockmap
-    sha512: arm64blockmap
-    size: 152344
-path: T3-Code-9.9.9-smoke.0-arm64.AppImage
-sha512: arm64appimage
-releaseDate: '2026-03-08T10:32:14.587Z'
-`,
-  );
-
-  NodeFS.writeFileSync(
-    x64Path,
-    `version: 9.9.9-smoke.0
-files:
-  - url: T3-Code-9.9.9-smoke.0-x64.AppImage
-    sha512: x64appimage
-    size: 132000112
-  - url: T3-Code-9.9.9-smoke.0-x64.AppImage.blockmap
-    sha512: x64blockmap
-    size: 160112
-path: T3-Code-9.9.9-smoke.0-x64.AppImage
-sha512: x64appimage
-releaseDate: '2026-03-08T10:36:07.540Z'
-`,
-  );
-
-  return { arm64Path, x64Path };
-}
-
 function writeLinuxBuilderDebugFixtures(targetRoot: string): {
   arm64Path: string;
   x64Path: string;
@@ -224,6 +179,32 @@ appImage:
 
   return { arm64Path, x64Path };
 }
+
+function writeLinuxElectronBuilderManifestFixtures(targetRoot: string): {
+  x64SourcePath: string;
+  arm64SourcePath: string;
+} {
+  const x64Directory = NodePath.resolve(targetRoot, "release-publish-x64");
+  const arm64Directory = NodePath.resolve(targetRoot, "release-publish-arm64");
+  NodeFS.mkdirSync(x64Directory, { recursive: true });
+  NodeFS.mkdirSync(arm64Directory, { recursive: true });
+
+  const x64SourcePath = NodePath.resolve(x64Directory, "nightly-linux.yml");
+  const arm64SourcePath = NodePath.resolve(arm64Directory, "nightly-linux-arm64.yml");
+  const manifestBody = `version: 9.9.9-smoke.0
+files:
+  - url: T3-Code-9.9.9-smoke.0-ARCH.AppImage
+    sha512: appimage
+    size: 125621344
+releaseDate: '2026-03-08T10:32:14.587Z'
+`;
+
+  NodeFS.writeFileSync(x64SourcePath, manifestBody.replace("ARCH", "x86_64"));
+  NodeFS.writeFileSync(arm64SourcePath, manifestBody.replace("ARCH", "arm64"));
+
+  return { x64SourcePath, arm64SourcePath };
+}
+
 function assertContains(haystack: string, needle: string, message: string): void {
   if (!haystack.includes(needle)) {
     throw new Error(message);
@@ -474,11 +455,9 @@ try {
     "Windows release smoke unexpectedly removed the x64 builder debug fixture.",
   );
 
-  const { arm64Path: linuxArm64Path, x64Path: linuxX64Path } = writeLinuxManifestFixtures(
-    tempRoot,
-    "nightly",
-  );
   const mergedLinuxManifestPath = NodePath.resolve(tempRoot, "release-assets/nightly.yml");
+  const { x64SourcePath: linuxX64SourcePath, arm64SourcePath: linuxArm64SourcePath } =
+    writeLinuxElectronBuilderManifestFixtures(tempRoot);
   const { arm64Path: linuxDebugArm64Path, x64Path: linuxDebugX64Path } =
     writeLinuxBuilderDebugFixtures(tempRoot);
   NodeChildProcess.execFileSync(
@@ -486,7 +465,31 @@ try {
     [
       "-lc",
       `
+        rename_linux_manifest() {
+          local manifest="$1"
+          local arch="$2"
+          local base
+          base="$(basename "$manifest" .yml)"
+          if [[ "$base" == *-linux-"$arch" ]]; then
+            return 0
+          fi
+          if [[ "$base" == *-linux ]]; then
+            mv "$manifest" "$(dirname "$manifest")/${base}-${arch}.yml"
+          else
+            mv "$manifest" "$(dirname "$manifest")/${base}-linux-${arch}.yml"
+          fi
+        }
+
+        rename_linux_manifest ${JSON.stringify(linuxX64SourcePath)} x64
+        rename_linux_manifest ${JSON.stringify(linuxArm64SourcePath)} arm64
+
         release_assets_dir=${JSON.stringify(NodePath.resolve(tempRoot, "release-assets"))}
+        mkdir -p "$release_assets_dir"
+        cp ${JSON.stringify(NodePath.resolve(tempRoot, "release-publish-x64/nightly-linux-x64.yml"))} "$release_assets_dir/"
+        cp ${JSON.stringify(NodePath.resolve(tempRoot, "release-publish-arm64/nightly-linux-arm64.yml"))} "$release_assets_dir/"
+        cp ${JSON.stringify(linuxDebugArm64Path)} "$release_assets_dir/"
+        cp ${JSON.stringify(linuxDebugX64Path)} "$release_assets_dir/"
+
         shopt -s nullglob
         found_linux_manifest=false
         for x64_manifest in "$release_assets_dir"/*-linux-x64.yml; do
@@ -531,14 +534,17 @@ try {
   );
   assertContains(
     mergedLinuxManifest,
-    "T3-Code-9.9.9-smoke.0-x64.AppImage",
+    "T3-Code-9.9.9-smoke.0-x86_64.AppImage",
     "Merged Linux manifest is missing the x64 asset.",
   );
   assertMissing(
-    linuxArm64Path,
+    NodePath.resolve(tempRoot, "release-assets/nightly-linux-arm64.yml"),
     "Linux release smoke unexpectedly kept the arm64 updater manifest.",
   );
-  assertMissing(linuxX64Path, "Linux release smoke unexpectedly kept the x64 updater manifest.");
+  assertMissing(
+    NodePath.resolve(tempRoot, "release-assets/nightly-linux-x64.yml"),
+    "Linux release smoke unexpectedly kept the x64 updater manifest.",
+  );
   assertMissing(
     linuxDebugArm64Path,
     "Linux release smoke unexpectedly kept the arm64 builder debug fixture.",

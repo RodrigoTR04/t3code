@@ -164,8 +164,17 @@ jobs:
             cp "$file" release-publish/
           done
 
+          arch="${{ matrix.arch }}"
           for manifest in release-publish/*.yml; do
-            mv "$manifest" "${manifest%.yml}-linux-${{ matrix.arch }}.yml"
+            base="$(basename "$manifest" .yml)"
+            if [[ "$base" == *-linux-"$arch" ]]; then
+              continue
+            fi
+            if [[ "$base" == *-linux ]]; then
+              mv "$manifest" "release-publish/${base}-${arch}.yml"
+            else
+              mv "$manifest" "release-publish/${base}-linux-${arch}.yml"
+            fi
           done
 
       - name: Upload build artifacts
